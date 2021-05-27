@@ -3,5 +3,6 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8"/>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="lib" path="/Applications/Fiji.app/jars/ij-1.53c.jar" sourcepath="/Users/thomasbraschler/Documents/imageJ_workspace/ij153c-src.zip"/>
+	<classpathentry kind="lib" path="/Applications/Fiji.app/jars/jama-1.0.3.jar" sourcepath="/Users/thomasbraschler/Documents/imageJ_workspace/PoreSizeExcel/external_source/Jama-1.0.3.zip"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
