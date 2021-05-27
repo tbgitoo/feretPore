@@ -2,6 +2,13 @@ package feretPore.tools;
 
 import org.orangepalantir.leastsquares.fitters.MarquardtFitter;
 
+import ij.ImagePlus;
+import ij.ImageStack;
+import ij.process.ImageProcessor;
+import ij.process.Blitter;
+import ij.process.ByteProcessor;
+import ij.plugin.ChannelSplitter;
+
 public class FeretPoreTools {
 	
 	public static double getQuantile(double [] hist, double p)
@@ -169,6 +176,47 @@ public class FeretPoreTools {
 		return final_output;
 
 
+	}
+	
+	public static ImagePlus greyFromMaxRGB(ImagePlus imp1)
+	{
+		ImageStack stack2=new ImageStack(imp1.getWidth(),imp1.getHeight());
+		
+		int nSlices=imp1.getImageStackSize();
+		
+		if (imp1.getProcessor().getNChannels()==1) // it's already greyscale, just
+			// make sure it's returning 8bit
+				{
+				
+				for(int i=1; i<=nSlices; i++) {
+					String label = imp1.getStack().getSliceLabel(1);
+					ImageProcessor ip = imp1.getStack().getProcessor(i);
+					stack2.addSlice(label, ip.convertToByte(false));
+				}
+				
+				
+		
+			
+		} else { // it's rgb get maximum of colors
+			for(int i=1; i<=nSlices; i++) {
+				String label = imp1.getStack().getSliceLabel(i);
+				
+				ImageProcessor ip = new ByteProcessor(imp1.getWidth(),imp1.getHeight());
+				
+				ImagePlus RGB=new ImagePlus("RGB", imp1.getStack().getProcessor(i));
+				for(int ic=1; ic<=imp1.getProcessor().getNChannels(); ic++)
+				{
+				
+				  ip.copyBits(ChannelSplitter.getChannel(RGB,ic).getProcessor(1), 0,0,Blitter.MAX);
+				
+				}
+						
+						
+				stack2.addSlice(label, ip);
+			}
+		}
+		ImagePlus imp2 =new ImagePlus(imp1.getTitle(),stack2);
+		return imp2;
 	}
 
 }

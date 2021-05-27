@@ -23,7 +23,9 @@ import ij.process.ImageProcessor;
 public class FeretPore implements PlugInFilter,DialogListener {
 
 	// image to work on
-	protected ImagePlus imp;
+	protected ImagePlus imp_greyscale;
+	
+	protected ImagePlus imp_rgb=null;
 
 	// image processor at the time of starting the analysis
 	protected ImageProcessor ip;
@@ -142,11 +144,20 @@ public class FeretPore implements PlugInFilter,DialogListener {
 	// Mandatory function for use in ImageJ, via the interface PlugInFilter
 	public int setup(String arg, ImagePlus imp) {
 
+		if (imp.getProcessor().getNChannels()==1) // Greyscale
+		{
+			this.imp_greyscale = imp;
+			this.imp_rgb=null;
+		} else { // RGB
+			this.imp_greyscale=FeretPoreTools.greyFromMaxRGB(imp);
+			this.imp_rgb=imp;
+					
+		}
 		// Store an internal reference to the assigned image
-		this.imp = imp;
+		
 
 		// For now, restricted to 8bit greyscale images
-		return DOES_8G+NO_CHANGES;
+		return DOES_RGB+DOES_8G+NO_CHANGES;
 	}
 
 	// Mandatory function for use in ImageJ, via the interface PlugInFilter
@@ -636,8 +647,8 @@ public class FeretPore implements PlugInFilter,DialogListener {
 	public Line selectRandomLine()
 	{
 		// First, determine the anchorage point ("radiator")
-		double radiator_x= Math.floor(Math.random()*imp.getWidth());
-		double radiator_y= Math.floor(Math.random()*imp.getHeight());
+		double radiator_x= Math.floor(Math.random()*imp_greyscale.getWidth());
+		double radiator_y= Math.floor(Math.random()*imp_greyscale.getHeight());
 
 		// Then, the random angle
 		double angle = Math.random()*Math.PI;
@@ -663,7 +674,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			start_x = 0;
 			start_y = (int) radiator_y;
 
-			end_x = imp.getWidth()-1;
+			end_x = imp_greyscale.getWidth()-1;
 			end_y = (int) radiator_y;
 
 			done=true;
@@ -676,7 +687,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			start_y = 0;
 
 			end_x = (int) radiator_x;
-			end_y = imp.getHeight()-1;
+			end_y = imp_greyscale.getHeight()-1;
 
 			done=true;
 		}
@@ -685,7 +696,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		{
 			// Try: Putative start x coordinate at 0 , end coordinate at image width
 			double sx=0;
-			double ex=imp.getWidth();
+			double ex=imp_greyscale.getWidth();
 
 			// Calculation of associated y values by extrapolation with the direction vector dx,dy
 			double sy=radiator_y+dy/dx*(sx-radiator_x);
@@ -702,10 +713,10 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			}
 
 			// other case where adjustment is needed: start y beyond image height
-			if(Math.round(sy)>(imp.getHeight()-1))
+			if(Math.round(sy)>(imp_greyscale.getHeight()-1))
 			{
 				// in that case, put start y at highest possible value
-				sy=imp.getHeight()-1;
+				sy=imp_greyscale.getHeight()-1;
 				// and calculate start x from the direction vector
 				sx=radiator_x + dx/dy*(sy-radiator_y);
 
@@ -724,10 +735,10 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			}
 
 			// sy falls beyond the total image height
-			if(Math.round(ey)>(imp.getHeight()-1))
+			if(Math.round(ey)>(imp_greyscale.getHeight()-1))
 			{
 				// highest value line is the correct value for ey
-				ey=imp.getHeight()-1;
+				ey=imp_greyscale.getHeight()-1;
 				// and again ex needs to be estimated
 				ex=radiator_x + dx/dy*(ey-radiator_y);
 
@@ -757,7 +768,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 		// To extract the pixel values along the line, we need to 
 		// associate the line with the ImagePlus object of this plugin
-		theRoi.setImage(imp);
+		theRoi.setImage(imp_greyscale);
 
 		return theRoi;
 
@@ -843,7 +854,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		if(chosenOutput.equals(outputChoices[0])){
 
 			rt.incrementCounter();
-			rt.addValue("Image", imp.getTitle());
+			rt.addValue("Image", imp_greyscale.getTitle());
 
 			// Mean pore size: Arithmetic mean of the intersections lengths; since 
 			// small intersections are by definition more frequent if involving the
