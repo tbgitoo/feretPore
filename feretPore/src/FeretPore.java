@@ -10,6 +10,7 @@ import ij.gui.DialogListener;
 import ij.gui.GenericDialog;
 import ij.gui.Line;
 import ij.measure.ResultsTable;
+import ij.plugin.ChannelSplitter;
 import ij.plugin.filter.Analyzer;
 import ij.plugin.filter.PlugInFilter;
 import ij.process.AutoThresholder;
@@ -65,6 +66,8 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 	// Holds the list intersections with the pore
 	public double[] length_list=new double[0];
+	
+	public Line[] intersections_list=new Line[0];
 	
 
 	// For each intersection, indicates to which line it belongs to
@@ -189,7 +192,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		// corresponding imageJ plugin to get the autothreshold values
 		if(useAutoThreshold)
 		{
-			threshold=getAutoThreshold(ip);
+			threshold=FeretPoreTools.getAutoThreshold(ip);
 		}
 
 		// The user wants the self-consistant solution, so
@@ -227,217 +230,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 	}
 	
-	// Calculates an autothreshold to distinguish background and foreground
-	// The algorithm is as follows:
-	// on the 80% least bright pixels, estimate a mean and standard deviation
-	// on a log-scaled histogram
-	// From this, evaluate the boundraries for a symmetric interval of confidence
-	// of 99%
-	// Compare this to 5% of the maximum intensity
-	// Whatever number is higher, take as the threshold
-	// The idea is that if there is a strong background, we want to 
-	// avoid counting background pixels as foreground by mistake
-	// but if the background is very clean, the main danger is to attribute pixels
-	// to the foreground, even though their brightness mainly results from 
-	// out-of-plane contribution due to the finite size of the 
-	// confocal detection volume, particularly in z-direction
-
-	public static int getAutoThreshold(ImageProcessor ip)
-	{
-		
-		
-		
-		int[] histo_int=ip.getHistogram();
-		
-		
-		double[] histo_double = new double[histo_int.length];
-		
-		for(int ind=0; ind<histo_double.length; ind++)
-		{
-			histo_double[ind] = histo_int[ind];
-		}
-
-		int cutoff_background=(int)Math.ceil(FeretPoreTools.getQuantile(histo_double, 0.8));
-
-		if(cutoff_background <0 )
-		{
-			cutoff_background=0;
-		}
-		if(cutoff_background > 255)
-		{
-			cutoff_background=255;
-		}
-
-		double[] bg_histo = new double[cutoff_background];
-
-		System.arraycopy(histo_double, 0, bg_histo, 0, cutoff_background);
-
-		double[] bg_histo_for_mean = new double[bg_histo.length];
-
-		for(int ind=0; ind<bg_histo.length; ind++)
-		{
-			bg_histo_for_mean[ind]=bg_histo[ind]*((double) ind);
-		}
-
-		double bg_mean_guess = FeretPoreTools.sum(bg_histo_for_mean);
-
-		double[] bg_histo_for_sd = new double[bg_histo.length];
-
-		for(int ind=0; ind<bg_histo.length; ind++)
-		{
-			bg_histo_for_sd[ind]=bg_histo[ind]*((double) ind-bg_mean_guess)*((double) ind-bg_mean_guess);
-		}
-
-		double bg_sd_guess = Math.sqrt(FeretPoreTools.sum(bg_histo_for_sd));
-
-		// For fitting, use 2x the mean
-		
-		int to_use = (int)Math.min((int)Math.round(bg_mean_guess*2), histo_double.length);
-		
-		bg_histo = new double[to_use];
-
-		System.arraycopy(histo_double, 0, bg_histo, 0, to_use);
-		
-		
-		
-
-		double[] m_sd= FeretPoreTools.gaussian_fit_histogram_log(bg_histo, bg_mean_guess, bg_sd_guess); 
-		
-		// 99% interval:
-		// Fromt the normal distribution
-		double quantile_99p_symmetric=2.575829;
-		
-		double upper = m_sd[0]+m_sd[1]*quantile_99p_symmetric;
-		
-		
-		int limit_from_background=(int)Math.ceil(upper);
-		
-		// Reasonably, we should also be above 0.1*the highest intensity
-		// This condition is to avoid taking out-of-plane pixels as foreground in the
-		// presence of a very weak background
-		
-		int max=0;
-		for(int ind=0; ind<histo_double.length; ind++)
-		{
-			if(histo_double[ind]>0)
-			{
-				max=ind;
-			}
-		}
-		
-		
-		
-		return Math.max((int)Math.ceil((double)max*0.1), limit_from_background);
-
-		
-
-	}
-
-
-
-	// Helper function: weighted mean of the values in an array
-	// length of x and length of weights needs to be identical
-	public static double mean(double [] x, double [] weights)
-	{
-		if(weights==null)
-		{
-			return mean(x);
-		}
-		double s = 0;
-		double sum_weights=0;
-		for(int ind=0; ind<x.length; ind++)
-		{
-			s = s + x[ind]*weights[ind];
-			sum_weights = sum_weights+weights[ind];
-		}
-		if(sum_weights>0)
-		{
-			return (s/sum_weights);
-		}
-		return 0;
-
-	}
-
-
-	// Helper function: Calculates the arithmetic mean of the values in the list
-	public static double  mean(double [] x)
-	{
-		double s = 0;
-		for(int ind=0; ind<x.length; ind++)
-		{
-			s = s + x[ind];
-		}
-		if(x.length>0)
-		{
-			return (s/(double)x.length);
-		}
-		return 0;
-
-	}
-
-	// Calculates the sum of the values in the list
-	public static double  sum(double [] x)
-	{
-		double s = 0;
-		for(int ind=0; ind<x.length; ind++)
-		{
-			s = s + x[ind];
-		}
-		if(x.length>0)
-		{
-			return (s);
-		}
-		return 0;
-
-	}
-
-
-	// Calculates a weighted standard deviation; the idea here is that if all the weights
-	// are equal to 1, this reduces to the standard N-1 formula
-	public static double standard_deviation(double [] x, double [] weights)
-	{
-
-		if(weights==null)
-		{
-			return standard_deviation(x);
-		}
-		double s = 0;
-		double sum_weights=0;
-
-		double m = mean(x,weights);
-
-		for(int ind=0; ind<x.length; ind++)
-		{
-			s = s + weights[ind]*(x[ind]-m)*(x[ind]-m);
-			sum_weights = sum_weights+weights[ind];
-		}
-		if(x.length>1)
-		{
-			// If all the weights are 1, or in fact equal, 
-			//  we should return the standard N-1 formula
-			return Math.sqrt(s/(sum_weights*(double)(x.length-1)/(double)x.length));
-		}
-		return 0;
-
-	}
-
-	// Calculates the standard of the values in the list, uses
-	// the n-1 formula
-	public static double standard_deviation(double [] x)
-	{
-		double s = 0;
-		for(int ind=0; ind<x.length; ind++)
-		{
-			s = s + x[ind]*x[ind];
-		}
-		if(x.length>1)
-		{
-			double m=mean(x);
-			return Math.sqrt((s-(double)x.length*m*m)/((double)x.length-1));
-		}
-		return 0;
-
-	}
+	
 
 	// Self consistent solution:
 	// Tries to find a cutoff such that minimum length is a 
@@ -451,7 +244,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		{
 			do_pore_size_analysis();
 
-			double m = mean(length_list);
+			double m = FeretPoreTools.mean(length_list);
 
 			minLength = m*fraction_min_length;
 		}
@@ -466,19 +259,28 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 		// Start with empty list of lengths ...
 		double[] final_list = new double[0];
+		Line[] intersections=new Line[0]; // in the RGB case, we need to exact intersection lines
+		                                  // for the definition of the color of the endpoints
+		
 		// and empty index list (the list which indicates the line to 
 		// which each fragment belongs)
 		int[] final_index_list = new int[0];
-
+		double[] list=new double[0];
 		// Loop: produce crossecting line, collect the intersecting segments
 		for(int indexLine=1; indexLine <= n_lines; indexLine++)
 		{
 			// random line
 			Line theLine=selectRandomLine();
 
-
+			list=pore_size(theLine.getPixels());
 			// get the pore sizes, in pixels
-			double[] list=pore_size(theLine.getPixels());
+			if (imp_rgb != null)
+			{
+				
+				intersections=intersectionSegments(theLine,true);
+				
+				
+			}
 
 			// get the size of the pixels from the known length of the line and its raw length in pixels
 			double pixelSize = theLine.getLength()/theLine.getRawLength();
@@ -505,6 +307,15 @@ public class FeretPore implements PlugInFilter,DialogListener {
 					System.arraycopy(final_index_list, 0, new_final_index_list, 0, final_index_list.length);
 					final_index_list = new_final_index_list;
 					final_index_list[final_index_list.length-1]=indexLine;
+					
+					
+					if(imp_rgb != null)
+					{
+						Line[] new_intersections_list=new Line[intersections_list.length+1];
+						System.arraycopy(intersections_list, 0, new_intersections_list, 0, intersections_list.length);
+						intersections_list = new_intersections_list;
+						intersections_list[intersections_list.length-1]=intersections[ind];
+					}
 
 				}
 			}
@@ -517,7 +328,7 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 		line_list = final_index_list;
 
-
+		
 
 
 
@@ -579,7 +390,15 @@ public class FeretPore implements PlugInFilter,DialogListener {
 						double y0 = pixels[ind-1];
 						double y1 = pixels[ind];
 
+						if(y1 != y0)
+						{	
 						start_fraction=(x1-x0)*(y1-threshold)/(y1-y0);
+						if (start_fraction < 0) {start_fraction=0;}
+						if (start_fraction > 1) {start_fraction=1;}
+						} else
+						{
+							start_fraction=0;
+						}
 
 
 
@@ -604,7 +423,16 @@ public class FeretPore implements PlugInFilter,DialogListener {
 					double y0 = pixels[ind-1];
 					double y1 = pixels[ind];
 
+					if( y1 != y0)
+					{
+
 					stop_fraction=(x1-x0)*(y1-threshold)/(y1-y0);
+					if (stop_fraction < 0) {stop_fraction=0;}
+					if (stop_fraction > 1) {stop_fraction=1;}
+					} else
+					{
+						stop_fraction=0;
+					}
 
 					// increase the length of the 
 					// segment list and 
@@ -635,6 +463,164 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		return poreSizeList;
 
 	}
+	
+	// For a given line, returns the list of intersection segments with the walls
+		// These intersection segments are themselves lines
+	public Line[] intersectionSegments(Line theLine)
+	{
+		return intersectionSegments(theLine,false); 
+	}
+	
+	
+	// For a given line, returns the list of intersection segments with the walls
+	// These intersection segments are themselves lines
+	public Line[] intersectionSegments(Line theLine,boolean wall_pixels)
+	{
+
+		double[] pixels = theLine.getPixels();
+
+		// We start the first pore after having had wall pixels
+		boolean poreStarted=false;
+		// For counting the pores
+		int n=0;
+
+
+
+		// Well we'll have to reallocate each time since Java doesn't provide decent arrays
+		Line[] intersectionList = new Line[n];
+
+		n=0; // no pores identified yet
+
+
+		// By linear interpolation, the fraction of a pixel required to reach the 
+		// threshold
+		double start_fraction = 0;
+
+		// By linear interpolation, the fraction of a pixel required to reach the threshold at the end of the pore
+		double stop_fraction = 0;
+
+		boolean first_wall_reached = false;
+		
+		double startingpoint_x=theLine.x1d;
+		double startingpoint_y=theLine.y1d;
+		
+		double endpoint_x=theLine.x2d;
+		double endpoint_y=theLine.y2d;
+
+		for(int ind =0; ind<pixels.length; ind++)
+		{
+			double theValue = pixels[ind];
+			
+
+			// in a pore
+			if(theValue < threshold)
+			{
+				// We should only count the pore if we had already a wall before, otherwise, this
+				// measures the distance to the edge of the image instead
+				if(first_wall_reached)
+				{
+					if(!poreStarted) // Freshly in a pore, so initiate the length
+					{
+						// Since we have already passed a wall, it cannot be the first pixel
+
+						double x0 = 0;
+						double x1 = 1;
+						double y0 = pixels[ind-1];
+						double y1 = pixels[ind];
+						
+						if(y1 != y0)
+						{	
+						start_fraction=(x1-x0)*(y1-threshold)/(y1-y0);
+						if (start_fraction < 0) {start_fraction=0;}
+						if (start_fraction > 1) {start_fraction=1;}
+						} else
+						{
+							start_fraction=0;
+						}
+						if(wall_pixels)
+						{
+							start_fraction=-1; // We want the pixel before which was above threshold
+						}
+
+
+						poreStarted=true;
+						
+						startingpoint_x = theLine.x1d+
+								(((double)ind+start_fraction)/((double)(pixels.length)))*(theLine.x2d-theLine.x1d);
+						startingpoint_y = theLine.y1d+
+								(((double)ind+start_fraction)/((double)(pixels.length)))*(theLine.y2d-theLine.y1d);
+						
+						
+					} 
+				}
+			} else // in the wall
+			{
+				// If we had started a true pore before, then
+				// reaching teh wall means completion of the pore
+				if(poreStarted) // This is a complete pore ...
+				{
+
+					double x0 = 0;
+					double x1 = 1;
+					double y0 = pixels[ind-1];
+					double y1 = pixels[ind];
+					
+					if( y1 != y0)
+					{
+
+					stop_fraction=(x1-x0)*(y1-threshold)/(y1-y0);
+					} else
+					{
+						stop_fraction=0;
+						if (stop_fraction < 0) {stop_fraction=0;}
+						if (stop_fraction > 1) {stop_fraction=1;}
+						
+					}
+					
+					if(wall_pixels)
+					{
+						stop_fraction=1; // We want the end pixel which is again in the wall here
+					}
+
+					// increase the length of the 
+					// segment list and 
+					//add an element
+					
+					endpoint_x = theLine.x1d+
+							(((double)ind+stop_fraction)/((double)pixels.length))*(theLine.x2d-theLine.x1d);
+					endpoint_y = theLine.y1d+
+							(((double)ind+stop_fraction)/((double)pixels.length))*(theLine.y2d-theLine.y1d);
+					
+					
+					Line[] NewintersectionList=new Line[n+1];
+					System.arraycopy(intersectionList, 0, NewintersectionList, 0, intersectionList.length);
+					intersectionList = NewintersectionList;
+					intersectionList[n]=new Line(startingpoint_x, startingpoint_y, endpoint_x, endpoint_y);
+					intersectionList[n].setImage(theLine.getImage());
+
+
+					
+					n++;
+					// reset the flag indicated we stared a pore
+					poreStarted=false;
+				}
+				// In any case, running in the wall means that we 
+				// can set the flag indicating we reached a wall
+				first_wall_reached = true;
+			}
+
+
+		}
+
+
+
+		return intersectionList;
+
+	}
+	
+	
+	
+	
 
 
 	// Selection of random line (I-Randomness according to 
@@ -843,6 +829,25 @@ public class FeretPore implements PlugInFilter,DialogListener {
 				rt.addValue("Section length", length_list[ind]);
 				// Threshold value
 				rt.addValue("Threshold", threshold);
+				if(imp_rgb != null)
+				{
+					String c1=FeretPoreTools.main_color_string(
+							FeretPoreTools.brightest_pixel_color(
+									imp_rgb, 
+									intersections_list[ind].x1d,
+									intersections_list[ind].y1d, 2));
+					String c2=FeretPoreTools.main_color_string(
+							FeretPoreTools.brightest_pixel_color(
+									imp_rgb, 
+									intersections_list[ind].x2d,
+									intersections_list[ind].y2d, 2));
+					
+					rt.addValue("Color Start", c1 );
+					
+					rt.addValue("Color End", c2);
+					rt.addValue("Color Overall", FeretPoreTools.combine_main_color_string(c1,c2));
+					
+				}
 
 				rt.addValue("Version FeretPore_.jar", VersionIndicator.versionJar);
 				
@@ -852,24 +857,25 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 		// Case where the user only wants the summary statistics
 		if(chosenOutput.equals(outputChoices[0])){
-
+			if(imp_rgb==null)
+			{
 			rt.incrementCounter();
 			rt.addValue("Image", imp_greyscale.getTitle());
 
 			// Mean pore size: Arithmetic mean of the intersections lengths; since 
 			// small intersections are by definition more frequent if involving the
 			// same number of pixels, this is "number" weighting
-			rt.addValue("Mean pore size (Number weighted)", mean(length_list));
+			rt.addValue("Mean pore size (Number weighted)", FeretPoreTools.mean(length_list));
 
 			// Mean pore size: Weighted mean, using the length of the
 			// intersections as the weight. This is technically "length weighted"
 			// but can also be considered "pixel weighted", as gives each intersection
 			// the weight it has due to its numbers of pixels			
-			rt.addValue("Mean pore size (Length weighted)", mean(length_list,length_list));
+			rt.addValue("Mean pore size (Length weighted)", FeretPoreTools.mean(length_list,length_list));
 
 			// Standard deviations, with the two weighting methods
-			rt.addValue("Std pore size (Number weighted)",standard_deviation(length_list));
-			rt.addValue("Std pore size (Length weighted)",standard_deviation(length_list,length_list));
+			rt.addValue("Std pore size (Number weighted)",FeretPoreTools.standard_deviation(length_list));
+			rt.addValue("Std pore size (Length weighted)",FeretPoreTools.standard_deviation(length_list,length_list));
 
 			// Final minimal pore length, this can be different from the user settings
 			// in the case of the self-
@@ -879,7 +885,66 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			rt.addValue("Threshold", threshold);
 			
 			rt.addValue("Version FeretPore_.jar", VersionIndicator.versionJar);
+			}
+			else
+			{
+				String[] segmentColors=new String[length_list.length];
+				for(int ind=0; ind<length_list.length; ind++)
+				{
+					
+					String c1=FeretPoreTools.main_color_string(
+							FeretPoreTools.brightest_pixel_color(
+									imp_rgb, 
+									intersections_list[ind].x1d,
+									intersections_list[ind].y1d, 2));
+					String c2=FeretPoreTools.main_color_string(
+							FeretPoreTools.brightest_pixel_color(
+									imp_rgb, 
+									intersections_list[ind].x2d,
+									intersections_list[ind].y2d, 2));
+					
+					segmentColors[ind]=FeretPoreTools.combine_main_color_string(c1,c2);
+					
+				}
+				// We have to sort this according to the unique color values
+				String[] unique_segment_colors = FeretPoreTools.unique_string_values(segmentColors);
+				for(int ind=0; ind<unique_segment_colors.length; ind++)
+				{
+					rt.incrementCounter();
+					rt.addValue("Image", imp_greyscale.getTitle());
+					
 
+					String theSegmentColor=unique_segment_colors[ind];
+					rt.addValue("Segment_color", theSegmentColor);
+					int count_with_segment_color=0;
+					for(int ind_segments=0; ind_segments<segmentColors.length; ind_segments++)
+					{
+						if(segmentColors[ind_segments].equalsIgnoreCase(theSegmentColor))
+						{
+							count_with_segment_color++;
+						}
+						
+					}
+					
+					double [] current_length_list = new double[count_with_segment_color];
+					count_with_segment_color=0;
+					
+					for(int ind_segments=0; ind_segments<segmentColors.length; ind_segments++)
+					{
+						if(segmentColors[ind_segments].equalsIgnoreCase(theSegmentColor))
+						{
+							current_length_list[count_with_segment_color]=length_list[ind_segments];
+							count_with_segment_color++;
+						}
+						
+					}
+					
+					rt.addValue("Mean pore size (Number weighted)", FeretPoreTools.mean(current_length_list));
+					
+					
+					
+				}
+			}
 		}
 
 		// Output a histogram. We need to collect the data first
@@ -948,8 +1013,8 @@ public class FeretPore implements PlugInFilter,DialogListener {
 			// Normalization such that the sum of the frequencies
 			// is 1
 			// Evaluate the current sums ...
-			double hf=sum(histogram_frequency);
-			double hfl=sum(histogram_length_frequency);
+			double hf=FeretPoreTools.sum(histogram_frequency);
+			double hfl=FeretPoreTools.sum(histogram_length_frequency);
 
 			// ... and divide the values by it 
 			for(int ind=0;ind<histogram_frequency.length;ind++)
