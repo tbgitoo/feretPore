@@ -6,7 +6,7 @@ public class VersionDisplay implements PlugIn {
 
 	
 	public void run(String arg) {
-		IJ.showMessage("FeretPore","Feret.jar version = "+VersionIndicator.versionJar);
+		IJ.showMessage("FeretPore","FeretPore_.jar version = "+VersionIndicator.versionJar);
 		
 	}
 

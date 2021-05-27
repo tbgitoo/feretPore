@@ -3,11 +3,11 @@
 
 
 <target name = "generate-jar">
-<jar destfile = "/Users/thomasbraschler/Documents/imageJ_workspace/feretPore/bin/jars/FeretPore_.jar"
-   basedir = "/Users/thomasbraschler/Documents/imageJ_workspace/feretPore/bin"
+<jar destfile = "bin/jars/FeretPore_.jar"
+   basedir = "bin"
    includes = "*.class,feretPore/**,org/**"
     >
-     <fileset dir="/Users/thomasbraschler/Documents/imageJ_workspace/feretPore/config"/>
+     <fileset dir="config"/>
     </jar>
 </target>
 
