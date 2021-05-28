@@ -1,6 +1,7 @@
 import java.awt.AWTEvent;
 import java.awt.Rectangle;
 import java.awt.Scrollbar;
+import java.util.Arrays;
 
 import feretPore.tools.VersionIndicator;
 import ij.IJ;
@@ -9,13 +10,18 @@ import ij.ImageStack;
 import ij.gui.DialogListener;
 import ij.gui.GenericDialog;
 import ij.gui.Line;
+import ij.gui.Roi;
 import ij.measure.ResultsTable;
 import ij.plugin.ChannelSplitter;
 import ij.plugin.filter.Analyzer;
 import ij.plugin.filter.PlugInFilter;
 import ij.process.AutoThresholder;
+import ij.process.Blitter;
+import ij.process.ByteProcessor;
+import ij.process.ColorProcessor;
 import feretPore.tools.FeretPoreTools;
 import ij.process.ImageProcessor;
+import ij.process.FloatProcessor;
 
 // The basic idea of this plugin is that one draws straight
 // lines through the image and then quantifies the length
@@ -37,6 +43,8 @@ public class FeretPore implements PlugInFilter,DialogListener {
 	// 0 => "Summary statistics only"
 	// 1 => "Raw list of intersection lengths"
 	// 2 => "Histogram"
+	// 3 => "Image" when RGB stack is used
+	
 	public static String[] outputChoices;
 
 	// Among the options above, the one that we should actually do
@@ -154,6 +162,31 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		} else { // RGB
 			this.imp_greyscale=FeretPoreTools.greyFromMaxRGB(imp);
 			this.imp_rgb=imp;
+			
+			outputChoices = new String[4];
+			outputChoices[0] = "Summary statistics only";
+			outputChoices[1] = "Raw list of intersection lengths";
+			outputChoices[2] = "Histogram";
+			outputChoices[3] = "Pore space attribution image";
+			
+			if(chosenOutput==null)
+			{
+				chosenOutput=outputChoices[0];
+			}
+			boolean valid=false;
+			// is a valid output choice selected at present?
+			for(int ind=0; ind<outputChoices.length; ind++)
+			{
+				if(chosenOutput.equals(outputChoices[ind]))
+				{
+					valid=true;
+				}
+			}
+			if(!valid)
+			{
+				chosenOutput=outputChoices[0];
+			}
+			
 					
 		}
 		// Store an internal reference to the assigned image
@@ -208,18 +241,25 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		// Do the actual pore size analysis
 		do_pore_size_analysis();
 
-		// Write the results into the results table
-		outputResultsToTable(rt);
-
-		
 		
 
-		// Make sure small numbers are displayed correctly
+		if((imp_rgb != null ) && chosenOutput.equals(outputChoices[3]))
+		{
+			outputAttributionImage();
+		} else {
+			// Write the results into the results table
+			outputResultsToTable(rt);
+			// Make sure small numbers are displayed correctly
 
-		rt.setPrecision(-4);
+			rt.setPrecision(-4);
 
-		// Show the results table
-		rt.show("Results");
+			// Show the results table
+			rt.show("Results");
+		}
+				
+		
+
+		
 
 
 
@@ -806,6 +846,93 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 
 	}
+	
+	// This needs an rgb stack
+	public void outputAttributionImage()
+	{
+		FloatProcessor nhit=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor red=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor green=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor blue=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		
+		for(int ind=0; ind<length_list.length; ind++)
+		{
+			FloatProcessor currentDrawing=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+			currentDrawing.setValue(1);
+			currentDrawing.drawLine(
+					intersections_list[ind].x1, intersections_list[ind].y1, 
+					intersections_list[ind].x2, intersections_list[ind].y2);
+			nhit.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+			
+			String c1=FeretPoreTools.main_color_string(
+					FeretPoreTools.brightest_pixel_color(
+							imp_rgb, 
+							intersections_list[ind].x1d,
+							intersections_list[ind].y1d, 2));
+			String c2=FeretPoreTools.main_color_string(
+					FeretPoreTools.brightest_pixel_color(
+							imp_rgb, 
+							intersections_list[ind].x2d,
+							intersections_list[ind].y2d, 2));
+			String segmentColor = FeretPoreTools.combine_main_color_string(c1,c2);
+			red.setValue(0);
+			green.setValue(0);
+			blue.setValue(0);
+			if (segmentColor.equals("G") | segmentColor.equals("Y") | segmentColor.equals("C") | segmentColor.equals("W"))
+			{
+				green.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("R") | segmentColor.equals("Y") | segmentColor.equals("M") | segmentColor.equals("W"))
+			{
+				red.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+			}
+			if (segmentColor.equals("B") | segmentColor.equals("C") | segmentColor.equals("M") | segmentColor.equals("W"))
+			{
+				blue.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+			}
+			
+			
+			
+		}
+		
+		red.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		green.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		blue.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		
+		red.multiply(255);
+		green.multiply(255);
+		blue.multiply(255);
+		
+		ByteProcessor redByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor greenByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor blueByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		
+		redByte.copyBits(red, 0, 0, Blitter.COPY);
+		greenByte.copyBits(green, 0, 0, Blitter.COPY);
+		blueByte.copyBits(blue, 0, 0, Blitter.COPY);
+		
+		// The lines are drawn a bit into the walls because we use the same extended lines that gave the wall color.
+		// Overlay with mask to correctly show only pore space
+				
+		ByteProcessor mask=new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		mask.copyBits(imp_greyscale.getProcessor(), 0, 0, Blitter.COPY);
+		mask.subtract(threshold-1);
+		mask.multiply(255);
+		
+		redByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		greenByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		blueByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		
+		// Get the color image showing the overall attribution
+		ColorProcessor cp = new ColorProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		cp.setRGB((byte[])redByte.getPixels(), (byte[])greenByte.getPixels(), (byte[])blueByte.getPixels());
+		
+		
+
+		ImagePlus show=new ImagePlus("Pore space attribution",cp);
+		show.show();
+	}
 
 
 	public void outputResultsToTable(ResultsTable rt)
@@ -908,6 +1035,9 @@ public class FeretPore implements PlugInFilter,DialogListener {
 				}
 				// We have to sort this according to the unique color values
 				String[] unique_segment_colors = FeretPoreTools.unique_string_values(segmentColors);
+				Arrays.sort(unique_segment_colors);  
+				
+				double total_length = FeretPoreTools.sum(length_list);
 				for(int ind=0; ind<unique_segment_colors.length; ind++)
 				{
 					rt.incrementCounter();
@@ -940,9 +1070,17 @@ public class FeretPore implements PlugInFilter,DialogListener {
 					}
 					
 					rt.addValue("Mean pore size (Number weighted)", FeretPoreTools.mean(current_length_list));
+					rt.addValue("Mean pore size (Length weighted)", FeretPoreTools.mean(current_length_list,current_length_list));
+					// Standard deviations, with the two weighting methods
+					rt.addValue("Std pore size (Number weighted)",FeretPoreTools.standard_deviation(current_length_list));
+					rt.addValue("Std pore size (Length weighted)",FeretPoreTools.standard_deviation(current_length_list,current_length_list));
+					rt.addValue("Minimal pore length", minLength);
+					rt.addValue("N", current_length_list.length);
+					rt.addValue("Threshold", threshold);
+					rt.addValue("Proportion (Number weighted)", (double)current_length_list.length/(double)length_list.length);
+					rt.addValue("Proportion (Length weighted)", FeretPoreTools.sum(current_length_list)/total_length);
 					
-					
-					
+					rt.addValue("Version FeretPore_.jar", VersionIndicator.versionJar);
 				}
 			}
 		}
@@ -981,11 +1119,40 @@ public class FeretPore implements PlugInFilter,DialogListener {
 					}
 				}
 			}
+			
+			String[] segmentColors=new String[length_list.length];
+			String[] unique_segment_colors=new String[1];
+			if(imp_rgb != null)
+			{
+			for(int ind=0; ind<length_list.length; ind++)
+			{
+				
+				String c1=FeretPoreTools.main_color_string(
+						FeretPoreTools.brightest_pixel_color(
+								imp_rgb, 
+								intersections_list[ind].x1d,
+								intersections_list[ind].y1d, 2));
+				String c2=FeretPoreTools.main_color_string(
+						FeretPoreTools.brightest_pixel_color(
+								imp_rgb, 
+								intersections_list[ind].x2d,
+								intersections_list[ind].y2d, 2));
+				
+				segmentColors[ind]=FeretPoreTools.combine_main_color_string(c1,c2);
+				
+			}
+			// We have to sort this according to the unique color values
+			unique_segment_colors = FeretPoreTools.unique_string_values(segmentColors);
+			Arrays.sort(unique_segment_colors); 
+			} 
+			
 
 
 			// Given that we collect round lengths, we need
 			// nbin = maxVal-minVal+1
 			// We need to store the actual pore sizes
+			// Do this overall and then by color
+			
 			int [] histogram_pore_size = new int[maxVal-minVal+1];
 			// The raw frequency
 			double [] histogram_frequency = new double[histogram_pore_size.length];
@@ -1031,11 +1198,76 @@ public class FeretPore implements PlugInFilter,DialogListener {
 
 
 				rt.incrementCounter();
+				rt.addValue("Image", imp_greyscale.getTitle());
 				rt.addValue("Pore size", histogram_pore_size[ind]);
 				rt.addValue("Frequency number weighted", histogram_frequency[ind]);
 				rt.addValue("Frequency length weighted", histogram_length_frequency[ind]);
 				rt.addValue("Threshold", threshold);
+				rt.addValue("Segment_color", "overall");
 				rt.addValue("Version FeretPore_.jar", VersionIndicator.versionJar);
+			}
+			
+			if(imp_rgb != null)
+			{
+				
+				for(int ind_color=0; ind_color<unique_segment_colors.length; ind_color++)
+				{
+					String theSegmentColor=unique_segment_colors[ind_color];
+					histogram_pore_size = new int[maxVal-minVal+1];
+					// The raw frequency
+					histogram_frequency = new double[histogram_pore_size.length];
+					// and the length-weighted frequency
+					histogram_length_frequency = new double[histogram_pore_size.length];
+
+					// Initialize the histogram variables
+					for(int ind=0; ind<histogram_pore_size.length; ind++)
+					{
+						histogram_pore_size[ind]=ind+minVal;
+						histogram_frequency[ind]=0;
+						histogram_length_frequency[ind]=0;
+					}
+
+					// run the intersection segments and distribute into the
+					// histogram bins
+					for(int ind=0;ind<rounded.length;ind++)
+					{
+						if(segmentColors[ind].equalsIgnoreCase(theSegmentColor))
+						{
+						histogram_frequency[rounded[ind]-minVal]++;
+						histogram_length_frequency[rounded[ind]-minVal]+=rounded[ind];
+						}
+
+
+					}
+
+					// Normalization such that the sum of the frequencies
+					// is 1 in the overall, the others reflect relative contributions
+					
+					for(int ind=0;ind<histogram_frequency.length;ind++)
+					{
+
+						histogram_frequency[ind]=histogram_frequency[ind]/hf;
+						histogram_length_frequency[ind]=histogram_length_frequency[ind]/hfl;
+
+					}
+
+					// Output the histogram, 1 line per entry in the results table
+					for(int ind=0; ind<histogram_frequency.length; ind++)
+					{
+
+
+						rt.incrementCounter();
+						rt.addValue("Image", imp_greyscale.getTitle());
+						rt.addValue("Pore size", histogram_pore_size[ind]);
+						rt.addValue("Frequency number weighted", histogram_frequency[ind]);
+						rt.addValue("Frequency length weighted", histogram_length_frequency[ind]);
+						rt.addValue("Threshold", threshold);
+						rt.addValue("Segment_color", theSegmentColor);
+						rt.addValue("Version FeretPore_.jar", VersionIndicator.versionJar);
+					}
+				
+				}
+				
 			}
 
 
