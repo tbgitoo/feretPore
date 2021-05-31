@@ -22,6 +22,7 @@ import ij.process.ColorProcessor;
 import feretPore.tools.FeretPoreTools;
 import ij.process.ImageProcessor;
 import ij.process.FloatProcessor;
+import ij.CompositeImage;
 
 // The basic idea of this plugin is that one draws straight
 // lines through the image and then quantifies the length
@@ -30,9 +31,11 @@ import ij.process.FloatProcessor;
 public class FeretPore implements PlugInFilter,DialogListener {
 
 	// image to work on
-	protected ImagePlus imp_greyscale;
+	protected ImagePlus imp_greyscale; // Greyscale representation of the image
 	
-	protected ImagePlus imp_rgb=null;
+	protected ImagePlus imp_rgb=null; // RGB representation of the image, if available
+	
+	protected ImagePlus imp; // The original image, whatever it is
 
 	// image processor at the time of starting the analysis
 	protected ImageProcessor ip;
@@ -155,6 +158,8 @@ public class FeretPore implements PlugInFilter,DialogListener {
 	// Mandatory function for use in ImageJ, via the interface PlugInFilter
 	public int setup(String arg, ImagePlus imp) {
 
+		this.imp=imp;
+		
 		if (imp.getProcessor().getNChannels()==1) // Greyscale
 		{
 			this.imp_greyscale = imp;
@@ -306,9 +311,15 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		// which each fragment belongs)
 		int[] final_index_list = new int[0];
 		double[] list=new double[0];
+		IJ.showStatus("Random line intersections");
 		// Loop: produce crossecting line, collect the intersecting segments
 		for(int indexLine=1; indexLine <= n_lines; indexLine++)
 		{
+			
+			if(indexLine % 100 == 0)
+			{
+				IJ.showProgress(indexLine, n_lines);
+			}
 			// random line
 			Line theLine=selectRandomLine();
 
@@ -854,9 +865,19 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		FloatProcessor red=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 		FloatProcessor green=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 		FloatProcessor blue=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor white=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor cyan=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor magenta=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		FloatProcessor yellow=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		
+		IJ.showStatus("Generate output image");
 		
 		for(int ind=0; ind<length_list.length; ind++)
 		{
+			if(ind % 100 == 0)
+			{
+				IJ.showProgress(ind, length_list.length);
+			}
 			FloatProcessor currentDrawing=new FloatProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 			currentDrawing.setValue(1);
 			currentDrawing.drawLine(
@@ -875,21 +896,41 @@ public class FeretPore implements PlugInFilter,DialogListener {
 							intersections_list[ind].x2d,
 							intersections_list[ind].y2d, 2));
 			String segmentColor = FeretPoreTools.combine_main_color_string(c1,c2);
-			red.setValue(0);
-			green.setValue(0);
-			blue.setValue(0);
-			if (segmentColor.equals("G") | segmentColor.equals("Y") | segmentColor.equals("C") | segmentColor.equals("W"))
+			
+			if (segmentColor.equals("R") )
+			{
+				red.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("G") )
 			{
 				green.copyBits(currentDrawing, 0, 0, Blitter.ADD);
 				
 			}
-			if (segmentColor.equals("R") | segmentColor.equals("Y") | segmentColor.equals("M") | segmentColor.equals("W"))
-			{
-				red.copyBits(currentDrawing, 0, 0, Blitter.ADD);
-			}
-			if (segmentColor.equals("B") | segmentColor.equals("C") | segmentColor.equals("M") | segmentColor.equals("W"))
+			if (segmentColor.equals("B") )
 			{
 				blue.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("W") )
+			{
+				white.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("C") )
+			{
+				cyan.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("M") )
+			{
+				magenta.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
+			}
+			if (segmentColor.equals("Y") )
+			{
+				yellow.copyBits(currentDrawing, 0, 0, Blitter.ADD);
+				
 			}
 			
 			
@@ -899,18 +940,34 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		red.copyBits(nhit, 0, 0, Blitter.DIVIDE);
 		green.copyBits(nhit, 0, 0, Blitter.DIVIDE);
 		blue.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		white.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		cyan.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		magenta.copyBits(nhit, 0, 0, Blitter.DIVIDE);
+		yellow.copyBits(nhit, 0, 0, Blitter.DIVIDE);
 		
 		red.multiply(255);
 		green.multiply(255);
 		blue.multiply(255);
+		white.multiply(255);
+		cyan.multiply(255);
+		magenta.multiply(255);
+		yellow.multiply(255);
 		
 		ByteProcessor redByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 		ByteProcessor greenByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 		ByteProcessor blueByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor whiteByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor cyanByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor magentaByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		ByteProcessor yellowByte = new ByteProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
 		
 		redByte.copyBits(red, 0, 0, Blitter.COPY);
 		greenByte.copyBits(green, 0, 0, Blitter.COPY);
 		blueByte.copyBits(blue, 0, 0, Blitter.COPY);
+		whiteByte.copyBits(white, 0, 0, Blitter.COPY);
+		cyanByte.copyBits(cyan, 0, 0, Blitter.COPY);
+		magentaByte.copyBits(magenta, 0, 0, Blitter.COPY);
+		yellowByte.copyBits(yellow, 0, 0, Blitter.COPY);
 		
 		// The lines are drawn a bit into the walls because we use the same extended lines that gave the wall color.
 		// Overlay with mask to correctly show only pore space
@@ -923,15 +980,31 @@ public class FeretPore implements PlugInFilter,DialogListener {
 		redByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
 		greenByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
 		blueByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		whiteByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		cyanByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		magentaByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
+		yellowByte.copyBits(mask, 0, 0, Blitter.SUBTRACT);
 		
 		// Get the color image showing the overall attribution
-		ColorProcessor cp = new ColorProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
-		cp.setRGB((byte[])redByte.getPixels(), (byte[])greenByte.getPixels(), (byte[])blueByte.getPixels());
+		//ColorProcessor cp = new ColorProcessor(imp_greyscale.getWidth(),imp_greyscale.getHeight());
+		//cp.setRGB((byte[])redByte.getPixels(), (byte[])greenByte.getPixels(), (byte[])blueByte.getPixels());
+		
+		ImageStack s=new ImageStack(imp_greyscale.getWidth(),imp_greyscale.getHeight(),7);
+		s.setProcessor(redByte, 1);
+		s.setProcessor(greenByte, 2);
+		s.setProcessor(blueByte, 3);
+		s.setProcessor(whiteByte, 4);
+		s.setProcessor(cyanByte, 5);
+		s.setProcessor(magentaByte, 6);
+		s.setProcessor(yellowByte, 7);
 		
 		
-
-		ImagePlus show=new ImagePlus("Pore space attribution",cp);
-		show.show();
+		
+		ImagePlus temp=new ImagePlus(imp.getTitle().concat("Pore space attribution"),s);
+		
+		CompositeImage cp = new CompositeImage(temp,ij.CompositeImage.COMPOSITE);
+		
+		cp.show();
 	}
 
 
